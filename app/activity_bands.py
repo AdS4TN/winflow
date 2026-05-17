@@ -198,6 +198,20 @@ def build_bands_from_events(
         for stat in stats
         if stat.total_active_seconds >= min_active_seconds or stat.hit_count >= min_hit_count
     ]
+    candidates.extend(
+        _build_boundary_fallback_candidates(
+            events,
+            day_start_ts,
+            day_end_ts,
+            bucket_seconds,
+            min_active_seconds,
+            min_hit_count,
+            merge_gap_seconds,
+            point_event_seconds,
+            max_sample_count,
+            candidates,
+        )
+    )
     return _merge_candidate_bands(candidates, merge_gap_seconds, max_sample_count)
 
 
@@ -254,6 +268,109 @@ def _stat_to_band(stat: _BucketStat) -> ActivityBand:
         hit_count=stat.hit_count,
         sample_titles=list(stat.sample_titles or []),
         sample_details=list(stat.sample_details or []),
+    )
+
+
+def _build_boundary_fallback_candidates(
+    events: Iterable[NormalizedEvent],
+    day_start_ts: int,
+    day_end_ts: int,
+    bucket_seconds: int,
+    min_active_seconds: int,
+    min_hit_count: int,
+    merge_gap_seconds: int,
+    point_event_seconds: int,
+    max_sample_count: int,
+    existing_candidates: Iterable[ActivityBand],
+) -> list[ActivityBand]:
+    """补偿固定 15 分钟桶边界造成的漏判。
+
+    例如 09:14-09:17 的连续应用停留实际达到 3 分钟，但被固定桶切成
+    09:14-09:15 和 09:15-09:17 后，两个桶内都不足阈值。这里按同一
+    event_key 的连续片段再做一次轻量聚合，只在没有候选带覆盖时补充。
+    """
+    existing = list(existing_candidates)
+    by_key: dict[str, list[NormalizedEvent]] = {}
+    for event in events:
+        start_ts = max(day_start_ts, int(event.start_ts))
+        end_ts = min(day_end_ts, int(event.end_ts))
+        if start_ts > day_end_ts or end_ts < day_start_ts:
+            continue
+        by_key.setdefault(event.event_key, []).append(event)
+
+    fallback: list[ActivityBand] = []
+    for key_events in by_key.values():
+        key_events.sort(key=lambda item: (item.start_ts, item.end_ts))
+        current: ActivityBand | None = None
+        cluster_anchor: int | None = None
+
+        for event in key_events:
+            start_ts = max(day_start_ts, int(event.start_ts))
+            raw_end_ts = min(day_end_ts, int(event.end_ts))
+            is_point = event.event_type == "web" or raw_end_ts <= start_ts
+            end_ts = max(start_ts, min(start_ts + point_event_seconds, day_end_ts)) if is_point else raw_end_ts
+            active_seconds = point_event_seconds if is_point else max(0, end_ts - start_ts)
+
+            should_start_new = (
+                current is None
+                or start_ts - current.end_ts > merge_gap_seconds
+                or (
+                    cluster_anchor is not None
+                    and start_ts - cluster_anchor >= bucket_seconds
+                )
+            )
+            if should_start_new:
+                if _is_qualifying_fallback(current, min_active_seconds, min_hit_count) and not _overlaps_existing(
+                    current, existing
+                ):
+                    fallback.append(current)
+                cluster_anchor = start_ts
+                current = ActivityBand(
+                    event_key=event.event_key,
+                    event_type=event.event_type,
+                    start_ts=start_ts,
+                    end_ts=end_ts,
+                    title=event.title,
+                    subtitle=event.subtitle,
+                    detail=event.detail,
+                    total_active_seconds=int(active_seconds),
+                    hit_count=1,
+                    sample_titles=[],
+                    sample_details=[],
+                )
+            else:
+                current.end_ts = max(current.end_ts, end_ts)
+                current.total_active_seconds += int(active_seconds)
+                current.hit_count += 1
+
+            _append_sample(current.sample_titles, event.subtitle or event.title, max_sample_count)
+            _append_sample(current.sample_details, event.detail, max_sample_count)
+
+        if _is_qualifying_fallback(current, min_active_seconds, min_hit_count) and not _overlaps_existing(
+            current, existing
+        ):
+            fallback.append(current)
+
+    return fallback
+
+
+def _is_qualifying_fallback(
+    band: ActivityBand | None,
+    min_active_seconds: int,
+    min_hit_count: int,
+) -> bool:
+    return bool(
+        band
+        and (band.total_active_seconds >= min_active_seconds or band.hit_count >= min_hit_count)
+    )
+
+
+def _overlaps_existing(band: ActivityBand, existing: Iterable[ActivityBand]) -> bool:
+    return any(
+        other.event_key == band.event_key
+        and band.start_ts <= other.end_ts
+        and other.start_ts <= band.end_ts
+        for other in existing
     )
 
 

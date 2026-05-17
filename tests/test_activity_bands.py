@@ -162,6 +162,29 @@ class ActivityBandsAlgorithmTest(unittest.TestCase):
         self.assertEqual(ts("09:10"), band_value(band, "start_ts"))
         self.assertEqual(ts("09:25"), band_value(band, "end_ts"))
 
+    def test_three_minute_app_stay_across_bucket_boundary_still_creates_band(self):
+        """边界补偿：09:14-09:17 横跨 09:15 桶边界，但总停留达到 3 分钟。"""
+        bands = self.build([self.app_event("09:14", "09:17", "Code.exe")])
+
+        band = self.assert_single_band(bands, "app:Code.exe")
+        self.assertEqual(ts("09:14"), band_value(band, "start_ts"))
+        self.assertEqual(ts("09:17"), band_value(band, "end_ts"))
+
+    def test_five_web_hits_across_bucket_boundary_still_creates_band(self):
+        """边界补偿：5 次访问横跨 09:15 桶边界时也不应被拆散漏判。"""
+        events = [
+            self.web_event("09:14", index=1),
+            self.web_event("09:14", index=2),
+            self.web_event("09:14", index=3),
+            self.web_event("09:15", index=4),
+            self.web_event("09:15", index=5),
+        ]
+
+        bands = self.build(events)
+
+        band = self.assert_single_band(bands, "web:github.com")
+        self.assertGreaterEqual(band_value(band, "hit_count"), 5)
+
 
 if __name__ == "__main__":
     unittest.main()
