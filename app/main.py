@@ -84,6 +84,7 @@ HTML = """<!doctype html>
 <script>
 function pad(n){ return String(n).padStart(2,'0') }
 function fmt(ts){ const d=new Date(ts*1000); return pad(d.getHours())+':'+pad(d.getMinutes()) }
+function localDayValue(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()) }
 function esc(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) }
 let mode = 'bands';
 function minutes(seconds){ return Math.round(Number(seconds||0)/60) }
@@ -130,7 +131,7 @@ function renderBands(data){
     return `<div class="item"><div class="time">${fmt(b.start_ts)}<br>↓ ${fmt(b.end_ts)}</div><div><div class="title"><span class="kind ${b.event_type==='web'?'web':'band'}">${b.event_type==='web'?'网页':'活动'}</span>${esc(b.title)}</div><div class="meta">${esc(b.subtitle)} · 估算活跃 ${minutes(b.total_active_seconds)} 分钟 · 命中 ${Number(b.hit_count||0)} 次${b.detail ? ' · '+esc(b.detail):''}</div>${sampleHtml}</div></div>`;
   }).join('');
 }
-(function(){ const d=new Date(); document.getElementById('day').value = d.toISOString().slice(0,10); loadData(); setInterval(loadData, 30000); })();
+(function(){ const d=new Date(); document.getElementById('day').value = localDayValue(d); loadData(); setInterval(loadData, 30000); })();
 </script>
 </body>
 </html>"""
@@ -158,16 +159,19 @@ def collect_loop(interval: int, browser_interval: int) -> None:
     init_db()
     print(f"Winflow 采集中：DB={DB_PATH}，窗口间隔={interval}s，浏览器同步={browser_interval}s。Ctrl+C 停止。")
     last_browser_sync = 0
-    while True:
-        now = time.time()
-        window = get_foreground_window()
-        if window:
-            record_foreground_window(window, int(now))
-        if now - last_browser_sync >= browser_interval:
-            count = sync_browsers()
-            print(f"[{time.strftime('%H:%M:%S')}] 浏览器同步：新增 {count} 条")
-            last_browser_sync = now
-        time.sleep(interval)
+    try:
+        while True:
+            now = time.time()
+            window = get_foreground_window()
+            if window:
+                record_foreground_window(window, int(now))
+            if now - last_browser_sync >= browser_interval:
+                count = sync_browsers()
+                print(f"[{time.strftime('%H:%M:%S')}] 浏览器同步：新增 {count} 条")
+                last_browser_sync = now
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print("\n采集已停止")
 
 
 class Handler(BaseHTTPRequestHandler):
