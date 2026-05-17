@@ -185,6 +185,43 @@ class ActivityBandsAlgorithmTest(unittest.TestCase):
         band = self.assert_single_band(bands, "web:github.com")
         self.assertGreaterEqual(band_value(band, "hit_count"), 5)
 
+    def test_explorer_task_switching_shell_event_is_filtered(self):
+        """explorer.exe 的任务切换/桌面外壳事件不应生成活动带。"""
+        from app.activity_bands import normalize_foreground_rows
+
+        rows = [
+            {
+                "start_ts": ts("09:00"),
+                "end_ts": ts("09:10"),
+                "process_name": "explorer.exe",
+                "window_title": "任务切换",
+                "exe_path": "C:\\WINDOWS\\explorer.exe",
+            }
+        ]
+
+        events = normalize_foreground_rows(rows)
+
+        self.assertEqual([], events)
+
+    def test_explorer_file_window_is_kept(self):
+        """真实文件资源管理器窗口仍应保留，避免误杀文件浏览活动。"""
+        from app.activity_bands import normalize_foreground_rows
+
+        rows = [
+            {
+                "start_ts": ts("09:00"),
+                "end_ts": ts("09:10"),
+                "process_name": "explorer.exe",
+                "window_title": "winflow",
+                "exe_path": "C:\\WINDOWS\\explorer.exe",
+            }
+        ]
+
+        events = normalize_foreground_rows(rows)
+
+        self.assertEqual(1, len(events))
+        self.assertEqual("app:explorer.exe", events[0].event_key)
+
 
 if __name__ == "__main__":
     unittest.main()

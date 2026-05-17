@@ -95,6 +95,8 @@ def normalize_foreground_rows(rows: Iterable[Any]) -> list[NormalizedEvent]:
         process_name = _clean_text(_row_get(row, "process_name"), "Unknown")
         window_title = _clean_text(_row_get(row, "window_title"), "无窗口标题")
         exe_path = _clean_text(_row_get(row, "exe_path"))
+        if _is_ignorable_system_shell(process_name, window_title):
+            continue
         events.append(
             NormalizedEvent(
                 event_key=f"app:{process_name}",
@@ -108,6 +110,26 @@ def normalize_foreground_rows(rows: Iterable[Any]) -> list[NormalizedEvent]:
             )
         )
     return events
+
+
+def _is_ignorable_system_shell(process_name: str, window_title: str) -> bool:
+    """过滤不代表真实用户任务的 Windows 外壳窗口。
+
+    explorer.exe 同时负责文件资源管理器、桌面、任务栏和 Alt+Tab。
+    文件资源管理器窗口应保留；任务切换、桌面等系统外壳事件应忽略，
+    否则频繁切屏会把 explorer.exe 错误聚合成活动带。
+    """
+    if process_name.lower() != "explorer.exe":
+        return False
+    normalized_title = window_title.strip().lower()
+    return normalized_title in {
+        "",
+        "无窗口标题",
+        "program manager",
+        "任务切换",
+        "task switching",
+        "start",
+    }
 
 
 def normalize_browser_rows(rows: Iterable[Any]) -> list[NormalizedEvent]:
