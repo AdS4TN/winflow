@@ -54,6 +54,22 @@ HTML = """<!doctype html>
     .samples { margin-top:8px; color:var(--muted); font-size:12px; }
     .sample { display:inline-block; max-width:100%; margin:3px 5px 0 0; padding:3px 7px; border:1px solid var(--line); border-radius:999px; background:#fffdf8; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom; }
     .empty { color:var(--muted); padding:30px; text-align:center; }
+    .timeline-viz { margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--line); }
+    .timeline-viz-header { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:12px; }
+    .timeline-viz-header .stat-title { margin-bottom:4px; }
+    .view-toggle { display:flex; gap:8px; flex:none; }
+    .view-toggle button { padding:7px 10px; border-radius:999px; font-size:12px; }
+    .timeline-chart { overflow-x:auto; padding-bottom:8px; }
+    .timeline-scale { position:relative; height:30px; margin-left:140px; border-bottom:1px solid var(--line); min-width:720px; }
+    .tick { position:absolute; top:0; bottom:0; border-left:1px solid rgba(121,108,95,.35); }
+    .tick span { position:absolute; top:0; transform:translateX(-50%); font-size:11px; color:var(--muted); white-space:nowrap; }
+    .lane { display:grid; grid-template-columns:130px minmax(720px, 1fr); min-height:34px; align-items:center; }
+    .lane-label { font-size:12px; color:var(--muted); padding-right:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .lane-track { position:relative; height:34px; border-bottom:1px dashed rgba(227,214,197,.9); }
+    .lane-track .tick { opacity:.45; }
+    .timeline-band { position:absolute; top:8px; height:18px; border-radius:999px; min-width:6px; box-shadow:0 2px 8px rgba(36,28,22,.14); cursor:pointer; }
+    .timeline-band.app { background:linear-gradient(90deg,#c47a31,#9b5c25); }
+    .timeline-band.web { background:linear-gradient(90deg,#4e91ad,#315f7d); }
     @media(max-width: 820px) { main.wrap { grid-template-columns: 1fr; } .item { grid-template-columns: 76px 1fr; } }
   </style>
 </head>
@@ -77,6 +93,19 @@ HTML = """<!doctype html>
       <div id="browsers"></div>
     </aside>
     <section class="panel timeline">
+      <div id="timelineViz" class="timeline-viz">
+        <div class="timeline-viz-header">
+          <div>
+            <p class="stat-title">活动带时间轴</p>
+            <div class="sub">每个事件一条轨道，色块长度表示持续区间。</div>
+          </div>
+          <div class="view-toggle">
+            <button id="compactRangeBtn" class="active" onclick="setRangeMode('compact')">紧凑</button>
+            <button id="fullRangeBtn" class="secondary" onclick="setRangeMode('full')">全天</button>
+          </div>
+        </div>
+        <div id="timelineChart" class="timeline-chart"></div>
+      </div>
       <p class="stat-title" id="timeline-title">时间线</p>
       <div id="items"></div>
     </section>
@@ -85,14 +114,95 @@ HTML = """<!doctype html>
 function pad(n){ return String(n).padStart(2,'0') }
 function fmt(ts){ const d=new Date(ts*1000); return pad(d.getHours())+':'+pad(d.getMinutes()) }
 function localDayValue(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()) }
-function esc(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) }
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) }
 let mode = 'bands';
+let rangeMode = 'compact';
 function minutes(seconds){ return Math.round(Number(seconds||0)/60) }
 function setMode(next){
   mode = next;
   document.getElementById('bandsBtn').className = next === 'bands' ? 'active' : 'secondary';
   document.getElementById('rawBtn').className = next === 'raw' ? 'active' : 'secondary';
   loadData();
+}
+function setRangeMode(next){
+  rangeMode = next === 'full' ? 'full' : 'compact';
+  document.getElementById('compactRangeBtn').className = rangeMode === 'compact' ? 'active' : 'secondary';
+  document.getElementById('fullRangeBtn').className = rangeMode === 'full' ? 'active' : 'secondary';
+  if(mode === 'bands') loadData();
+}
+function floorToHour(ts){ return Math.floor(Number(ts||0) / 3600) * 3600 }
+function ceilToHour(ts){ return Math.ceil(Number(ts||0) / 3600) * 3600 }
+function buildTimelineRange(data){
+  const bands = data.bands || [];
+  if(rangeMode === 'full' || !bands.length){
+    return { rangeStart: Number(data.start_ts||0), rangeEnd: Number(data.end_ts||0) };
+  }
+  const minStart = Math.min(...bands.map(b => Number(b.start_ts||0)));
+  const maxEnd = Math.max(...bands.map(b => Number(b.end_ts||0)));
+  return { rangeStart: floorToHour(minStart), rangeEnd: ceilToHour(maxEnd) };
+}
+function buildTicks(rangeStart, rangeEnd){
+  const ticks = [];
+  let cursor = ceilToHour(rangeStart);
+  while(cursor <= rangeEnd){
+    ticks.push(cursor);
+    cursor += 3600;
+  }
+  return ticks;
+}
+function pct(ts, rangeStart, rangeEnd){
+  if(rangeEnd <= rangeStart) return 0;
+  return (Number(ts||0) - rangeStart) / (rangeEnd - rangeStart) * 100;
+}
+function bandTooltip(band){
+  const samples = [...(band.sample_titles || []), ...(band.sample_details || [])].slice(0, 5);
+  return [
+    band.title || band.event_key || '活动',
+    fmt(band.start_ts) + ' - ' + fmt(band.end_ts),
+    '估算活跃：' + minutes(band.total_active_seconds) + ' 分钟',
+    '命中：' + Number(band.hit_count || 0) + ' 次',
+    band.subtitle || '',
+    band.detail || '',
+    samples.length ? '样本：\\n' + samples.join('\\n') : ''
+  ].filter(Boolean).join('\\n');
+}
+function renderTimelineViz(data){
+  const viz = document.getElementById('timelineViz');
+  const chart = document.getElementById('timelineChart');
+  viz.style.display = mode === 'bands' ? '' : 'none';
+  if(mode !== 'bands') return;
+  const bands = data.bands || [];
+  if(!bands.length){
+    chart.innerHTML = '<div class="empty">暂无活动带可视化数据。</div>';
+    return;
+  }
+  const { rangeStart, rangeEnd } = buildTimelineRange(data);
+  const ticks = buildTicks(rangeStart, rangeEnd);
+  const tickHtml = ticks.map(t => `<div class="tick" style="left:${pct(t, rangeStart, rangeEnd).toFixed(3)}%"><span>${fmt(t)}</span></div>`).join('');
+  const laneMap = new Map();
+  bands.forEach((band, index) => {
+    band._index = index;
+    const key = band.event_key || 'unknown:' + index;
+    if(!laneMap.has(key)){
+      laneMap.set(key, { key, label: band.title || key, firstStart: Number(band.start_ts||0), totalSeconds: 0, bands: [] });
+    }
+    const lane = laneMap.get(key);
+    lane.firstStart = Math.min(lane.firstStart, Number(band.start_ts||0));
+    lane.totalSeconds += Number(band.total_active_seconds||0);
+    lane.bands.push(band);
+  });
+  const lanes = Array.from(laneMap.values()).sort((a, b) => a.firstStart - b.firstStart || b.totalSeconds - a.totalSeconds);
+  const laneHtml = lanes.map(lane => {
+    const blocks = lane.bands.map(band => {
+      const left = Math.max(0, Math.min(100, pct(band.start_ts, rangeStart, rangeEnd)));
+      const rawWidth = pct(band.end_ts, rangeStart, rangeEnd) - pct(band.start_ts, rangeStart, rangeEnd);
+      const width = Math.min(100 - left, Math.max(0.6, rawWidth));
+      const typeClass = band.event_type === 'web' ? 'web' : 'app';
+      return `<div class="timeline-band ${typeClass}" style="left:${left.toFixed(3)}%;width:${width.toFixed(3)}%" title="${esc(bandTooltip(band))}" onclick="document.getElementById('band-${band._index}')?.scrollIntoView({behavior:'smooth',block:'center'})"></div>`;
+    }).join('');
+    return `<div class="lane"><div class="lane-label" title="${esc(lane.label)}">${esc(lane.label)}</div><div class="lane-track">${tickHtml}${blocks}</div></div>`;
+  }).join('');
+  chart.innerHTML = `<div class="timeline-scale">${tickHtml}</div>${laneHtml}`;
 }
 function renderBars(el, rows, nameKey, valueKey, suffix){
   const max = Math.max(1, ...rows.map(r=>Number(r[valueKey]||0)));
@@ -106,6 +216,7 @@ async function loadData(){
   const data = await res.json();
   document.getElementById('timeline-title').textContent = data.day + (mode === 'bands' ? ' 活动带' : ' 原始时间线');
   if(mode === 'bands'){
+    renderTimelineViz(data);
     const topBands = (data.stats && data.stats.top_bands || []).map(b => ({ name: b.title + ' · ' + b.subtitle, seconds: b.total_active_seconds }));
     const byType = (data.stats && data.stats.by_type || []).map(r => ({ name: r.event_type === 'web' ? '网页' : '应用', count: r.band_count }));
     renderBars(document.getElementById('apps'), topBands, 'name', 'seconds', v => minutes(v)+' 分钟');
@@ -113,6 +224,7 @@ async function loadData(){
     renderBands(data);
     return;
   }
+  renderTimelineViz(data);
   renderBars(document.getElementById('apps'), data.stats.apps || [], 'process_name', 'seconds', v => minutes(v)+' 分钟');
   renderBars(document.getElementById('browsers'), data.stats.browsers || [], 'browser', 'count', v => Number(v||0)+' 次');
   renderRawItems(data);
@@ -125,10 +237,10 @@ function renderRawItems(data){
 function renderBands(data){
   const items = document.getElementById('items');
   if(!data.bands.length){ items.innerHTML = '<div class="empty">暂无活动带。采集一段时间后，超过阈值的事件会出现在这里。</div>'; return; }
-  items.innerHTML = data.bands.map(b => {
+  items.innerHTML = data.bands.map((b, index) => {
     const samples = [...(b.sample_titles || []), ...(b.sample_details || [])].slice(0, 6);
     const sampleHtml = samples.length ? `<div class="samples">${samples.map(s => `<span class="sample">${esc(s)}</span>`).join('')}</div>` : '';
-    return `<div class="item"><div class="time">${fmt(b.start_ts)}<br>↓ ${fmt(b.end_ts)}</div><div><div class="title"><span class="kind ${b.event_type==='web'?'web':'band'}">${b.event_type==='web'?'网页':'活动'}</span>${esc(b.title)}</div><div class="meta">${esc(b.subtitle)} · 估算活跃 ${minutes(b.total_active_seconds)} 分钟 · 命中 ${Number(b.hit_count||0)} 次${b.detail ? ' · '+esc(b.detail):''}</div>${sampleHtml}</div></div>`;
+    return `<div class="item" id="band-${b._index ?? index}"><div class="time">${fmt(b.start_ts)}<br>↓ ${fmt(b.end_ts)}</div><div><div class="title"><span class="kind ${b.event_type==='web'?'web':'band'}">${b.event_type==='web'?'网页':'活动'}</span>${esc(b.title)}</div><div class="meta">${esc(b.subtitle)} · 估算活跃 ${minutes(b.total_active_seconds)} 分钟 · 命中 ${Number(b.hit_count||0)} 次${b.detail ? ' · '+esc(b.detail):''}</div>${sampleHtml}</div></div>`;
   }).join('');
 }
 (function(){ const d=new Date(); document.getElementById('day').value = localDayValue(d); loadData(); setInterval(loadData, 30000); })();
