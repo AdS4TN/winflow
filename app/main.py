@@ -76,7 +76,7 @@ HTML = """<!doctype html>
     .lane-track { position:relative; height:38px; border-bottom:1px dashed rgba(203,184,163,.82); background:linear-gradient(180deg,rgba(255,255,255,.32),rgba(255,255,255,0)); }
     .lane-track .tick { opacity:.55; }
     .lane-track .tick span { display:none; }
-    .timeline-band { position:absolute; top:8px; height:20px; border-radius:999px; min-width:8px; cursor:pointer; border:1px solid rgba(255,255,255,.52); box-shadow:0 3px 10px rgba(36,28,22,.16), inset 0 1px 0 rgba(255,255,255,.28); transition:transform .14s ease, box-shadow .14s ease, filter .14s ease; }
+    .timeline-band { appearance:none; position:absolute; top:8px; height:20px; padding:0; border-radius:999px; min-width:8px; cursor:pointer; border:1px solid rgba(255,255,255,.52); box-shadow:0 3px 10px rgba(36,28,22,.16), inset 0 1px 0 rgba(255,255,255,.28); transition:transform .14s ease, box-shadow .14s ease, filter .14s ease; }
     .timeline-band::after { content:''; position:absolute; inset:2px 5px auto; height:38%; border-radius:999px; background:rgba(255,255,255,.22); pointer-events:none; }
     .timeline-band:hover, .timeline-band:focus { z-index:3; transform:translateY(-1px) scaleY(1.08); filter:saturate(1.1); box-shadow:0 8px 18px rgba(36,28,22,.22), 0 0 0 3px rgba(155,92,37,.12); outline:none; }
     .timeline-band.app { background:linear-gradient(90deg,#d98a38,var(--app) 55%,var(--app-dark)); }
