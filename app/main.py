@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from .activity_bands import build_activity_bands
 from .browser_history import discover_browser_profiles, read_recent_browser_history
 from .config import DEFAULT_BROWSER_SYNC_INTERVAL_SECONDS, DEFAULT_COLLECT_INTERVAL_SECONDS, DB_PATH
 from .storage import init_db, insert_browser_visits, record_foreground_window
@@ -31,8 +32,10 @@ HTML = """<!doctype html>
     h1 { margin:0; font-size: 26px; letter-spacing:-.03em; }
     .sub { color:var(--muted); margin-top:6px; font-size:14px; }
     .toolbar { display:flex; gap:10px; align-items:center; margin-top:14px; flex-wrap:wrap; }
-    input, button, a.button { border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:#fff; color:var(--ink); text-decoration:none; }
+    input, button, a.button, select { border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:#fff; color:var(--ink); text-decoration:none; }
     button, a.button { cursor:pointer; background:#2b2119; color:#fff; border-color:#2b2119; }
+    button.secondary { background:#fff; color:var(--ink); border-color:var(--line); }
+    button.active { background:#9b5c25; border-color:#9b5c25; color:#fff; }
     main.wrap { display:grid; grid-template-columns: 300px 1fr; gap:18px; }
     .panel { background: rgba(255,250,241,.86); border:1px solid var(--line); border-radius:20px; padding:16px; box-shadow: 0 10px 30px rgba(91,63,35,.08); }
     .stat-title { font-weight:700; margin:0 0 10px; }
@@ -45,8 +48,11 @@ HTML = """<!doctype html>
     .time { color:var(--accent); font-variant-numeric: tabular-nums; font-size:13px; padding-top:2px; }
     .kind { display:inline-block; font-size:11px; border-radius:999px; padding:3px 8px; margin-right:8px; color:#fff; background:#6b4c32; }
     .kind.web { background:#315f7d; }
+    .kind.band { background:#9b5c25; }
     .title { font-weight:650; line-height:1.35; overflow-wrap:anywhere; }
     .meta { color:var(--muted); font-size:13px; margin-top:4px; overflow-wrap:anywhere; }
+    .samples { margin-top:8px; color:var(--muted); font-size:12px; }
+    .sample { display:inline-block; max-width:100%; margin:3px 5px 0 0; padding:3px 7px; border:1px solid var(--line); border-radius:999px; background:#fffdf8; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom; }
     .empty { color:var(--muted); padding:30px; text-align:center; }
     @media(max-width: 820px) { main.wrap { grid-template-columns: 1fr; } .item { grid-template-columns: 76px 1fr; } }
   </style>
@@ -57,6 +63,8 @@ HTML = """<!doctype html>
     <div class="sub">数据只从本机 SQLite 读取。先运行 <code>python -m app.main collect</code> 才会持续产生记录。</div>
     <div class="toolbar">
       <input id="day" type="date" />
+      <button id="bandsBtn" class="active" onclick="setMode('bands')">活动带</button>
+      <button id="rawBtn" class="secondary" onclick="setMode('raw')">原始事件</button>
       <button onclick="loadData()">查看</button>
       <a id="export" class="button" href="/api/export" target="_blank">导出 Markdown</a>
     </div>
@@ -77,6 +85,14 @@ HTML = """<!doctype html>
 function pad(n){ return String(n).padStart(2,'0') }
 function fmt(ts){ const d=new Date(ts*1000); return pad(d.getHours())+':'+pad(d.getMinutes()) }
 function esc(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) }
+let mode = 'bands';
+function minutes(seconds){ return Math.round(Number(seconds||0)/60) }
+function setMode(next){
+  mode = next;
+  document.getElementById('bandsBtn').className = next === 'bands' ? 'active' : 'secondary';
+  document.getElementById('rawBtn').className = next === 'raw' ? 'active' : 'secondary';
+  loadData();
+}
 function renderBars(el, rows, nameKey, valueKey, suffix){
   const max = Math.max(1, ...rows.map(r=>Number(r[valueKey]||0)));
   el.innerHTML = rows.length ? rows.map(r=>`<div class="bar"><div class="label"><span>${esc(r[nameKey])}</span><span>${suffix(r[valueKey])}</span></div><div class="meter"><span style="width:${Math.max(4, Number(r[valueKey]||0)/max*100)}%"></span></div></div>`).join('') : '<div class="empty">暂无数据</div>';
@@ -85,14 +101,34 @@ async function loadData(){
   const day = document.getElementById('day').value;
   const qs = day ? '?day='+encodeURIComponent(day) : '';
   document.getElementById('export').href = '/api/export'+qs;
-  const res = await fetch('/api/timeline'+qs);
+  const res = await fetch((mode === 'bands' ? '/api/bands' : '/api/timeline')+qs);
   const data = await res.json();
-  document.getElementById('timeline-title').textContent = data.day + ' 时间线';
-  renderBars(document.getElementById('apps'), data.stats.apps || [], 'process_name', 'seconds', v => Math.round(Number(v||0)/60)+' 分钟');
+  document.getElementById('timeline-title').textContent = data.day + (mode === 'bands' ? ' 活动带' : ' 原始时间线');
+  if(mode === 'bands'){
+    const topBands = (data.stats && data.stats.top_bands || []).map(b => ({ name: b.title + ' · ' + b.subtitle, seconds: b.total_active_seconds }));
+    const byType = (data.stats && data.stats.by_type || []).map(r => ({ name: r.event_type === 'web' ? '网页' : '应用', count: r.band_count }));
+    renderBars(document.getElementById('apps'), topBands, 'name', 'seconds', v => minutes(v)+' 分钟');
+    renderBars(document.getElementById('browsers'), byType, 'name', 'count', v => Number(v||0)+' 条');
+    renderBands(data);
+    return;
+  }
+  renderBars(document.getElementById('apps'), data.stats.apps || [], 'process_name', 'seconds', v => minutes(v)+' 分钟');
   renderBars(document.getElementById('browsers'), data.stats.browsers || [], 'browser', 'count', v => Number(v||0)+' 次');
+  renderRawItems(data);
+}
+function renderRawItems(data){
   const items = document.getElementById('items');
   if(!data.items.length){ items.innerHTML = '<div class="empty">暂无记录。请先运行采集命令。</div>'; return; }
   items.innerHTML = data.items.map(it => `<div class="item"><div class="time">${fmt(it.start_ts)}${it.end_ts!==it.start_ts ? '<br>↓ '+fmt(it.end_ts):''}</div><div><div class="title"><span class="kind ${it.kind}">${it.kind==='web'?'网页':'应用'}</span>${esc(it.title)}</div><div class="meta">${esc(it.subtitle)} ${it.detail ? ' · '+esc(it.detail):''}</div></div></div>`).join('');
+}
+function renderBands(data){
+  const items = document.getElementById('items');
+  if(!data.bands.length){ items.innerHTML = '<div class="empty">暂无活动带。采集一段时间后，超过阈值的事件会出现在这里。</div>'; return; }
+  items.innerHTML = data.bands.map(b => {
+    const samples = [...(b.sample_titles || []), ...(b.sample_details || [])].slice(0, 6);
+    const sampleHtml = samples.length ? `<div class="samples">${samples.map(s => `<span class="sample">${esc(s)}</span>`).join('')}</div>` : '';
+    return `<div class="item"><div class="time">${fmt(b.start_ts)}<br>↓ ${fmt(b.end_ts)}</div><div><div class="title"><span class="kind ${b.event_type==='web'?'web':'band'}">${b.event_type==='web'?'网页':'活动'}</span>${esc(b.title)}</div><div class="meta">${esc(b.subtitle)} · 估算活跃 ${minutes(b.total_active_seconds)} 分钟 · 命中 ${Number(b.hit_count||0)} 次${b.detail ? ' · '+esc(b.detail):''}</div>${sampleHtml}</div></div>`;
+  }).join('');
 }
 (function(){ const d=new Date(); document.getElementById('day').value = d.toISOString().slice(0,10); loadData(); setInterval(loadData, 30000); })();
 </script>
@@ -157,6 +193,10 @@ class Handler(BaseHTTPRequestHandler):
             body = json.dumps(build_timeline(day), ensure_ascii=False).encode("utf-8")
             self._send(200, body, "application/json; charset=utf-8")
             return
+        if parsed.path == "/api/bands":
+            body = json.dumps(build_activity_bands(day), ensure_ascii=False).encode("utf-8")
+            self._send(200, body, "application/json; charset=utf-8")
+            return
         if parsed.path == "/api/export":
             body = build_summary_text(day).encode("utf-8")
             self._send(200, body, "text/markdown; charset=utf-8")
@@ -199,6 +239,9 @@ def main(argv: list[str] | None = None) -> int:
     p_export = sub.add_parser("export", help="导出指定日期 Markdown")
     p_export.add_argument("--day", default=None, help="YYYY-MM-DD，默认今天")
 
+    p_bands = sub.add_parser("bands", help="输出指定日期活动带 JSON")
+    p_bands.add_argument("--day", default=None, help="YYYY-MM-DD，默认今天")
+
     args = parser.parse_args(argv)
     if args.cmd == "init":
         init_db()
@@ -216,6 +259,8 @@ def main(argv: list[str] | None = None) -> int:
         serve(args.host, args.port, not args.no_open)
     elif args.cmd == "export":
         print(build_summary_text(args.day))
+    elif args.cmd == "bands":
+        print(json.dumps(build_activity_bands(args.day), ensure_ascii=False, indent=2))
     return 0
 
 
