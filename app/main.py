@@ -64,34 +64,24 @@ HTML = """<!doctype html>
     .view-toggle button { padding:7px 12px; border-radius:999px; font-size:12px; line-height:1; border-color:transparent; }
     .view-toggle button.secondary { background:transparent; color:var(--muted); }
     .view-toggle button.active { background:#2b2119; border-color:#2b2119; color:#fff; box-shadow:0 3px 10px rgba(36,28,22,.18); }
-    .timeline-chart { max-width:100%; max-height:72vh; overflow:auto; padding:8px 2px 12px; scrollbar-color:#cbb8a3 #f2e7d8; scrollbar-width:thin; }
-    .timeline-chart::-webkit-scrollbar { width:10px; height:10px; }
+    .timeline-chart { max-width:100%; overflow-x:auto; overflow-y:hidden; padding:2px 2px 10px; scrollbar-color:#cbb8a3 #f2e7d8; scrollbar-width:thin; }
+    .timeline-chart::-webkit-scrollbar { height:10px; }
     .timeline-chart::-webkit-scrollbar-track { background:#f2e7d8; border-radius:999px; }
     .timeline-chart::-webkit-scrollbar-thumb { background:#cbb8a3; border-radius:999px; border:2px solid #f2e7d8; }
-    .vertical-timeline { position:relative; min-width:620px; padding-left:76px; padding-right:2px; }
-    .timeline-rail { position:absolute; left:62px; top:0; bottom:0; border-left:2px solid rgba(36,28,22,.45); }
-    .time-tick { position:absolute; left:0; right:0; border-top:1px dashed rgba(121,108,95,.22); pointer-events:none; }
-    .time-tick-label { position:absolute; left:-76px; top:-9px; width:54px; text-align:right; color:#5d5146; font-size:11px; font-weight:650; font-variant-numeric:tabular-nums; }
-    .time-tick-dot { position:absolute; left:58px; top:-4px; width:9px; height:9px; border-radius:999px; background:#241c16; box-shadow:0 0 0 3px rgba(255,250,241,.9); }
-    .timeline-card { appearance:none; position:absolute; left:86px; right:0; display:flex; align-items:flex-start; gap:10px; min-height:46px; padding:10px 12px; border-radius:10px; text-align:left; cursor:pointer; overflow:hidden; border:1px solid rgba(255,255,255,.62); box-shadow:0 8px 20px rgba(36,28,22,.10), inset 0 1px 0 rgba(255,255,255,.35); transition:transform .14s ease, box-shadow .14s ease, filter .14s ease; }
-    .timeline-card:hover, .timeline-card:focus { z-index:6; transform:translateY(-1px); filter:saturate(1.06); box-shadow:0 14px 28px rgba(36,28,22,.18), 0 0 0 3px rgba(155,92,37,.12); outline:none; }
-    .timeline-card.app { background:linear-gradient(135deg,rgba(255,246,221,.96),rgba(255,226,171,.88)); }
-    .timeline-card.web { background:linear-gradient(135deg,rgba(226,248,255,.95),rgba(184,228,242,.86)); }
-    .timeline-card.short { background:linear-gradient(135deg,rgba(255,231,214,.95),rgba(255,196,166,.82)); }
-    .timeline-card::after { content:''; position:absolute; inset:0; background:repeating-linear-gradient(135deg,rgba(255,255,255,.16) 0 1px,transparent 1px 7px); pointer-events:none; opacity:.5; }
-    .app-icon { position:relative; z-index:1; flex:none; display:grid; place-items:center; width:24px; height:24px; border-radius:7px; background:#fff; color:#241c16; font-size:13px; font-weight:800; box-shadow:0 2px 8px rgba(36,28,22,.14); overflow:hidden; }
-    .app-icon.youtube { background:#ff0033; color:#fff; }
-    .app-icon.github { background:#24292f; color:#fff; }
-    .app-icon.chatgpt { background:#111827; color:#fff; }
-    .app-icon.x { background:#050505; color:#fff; }
-    .app-icon.code { background:#1473c3; color:#fff; }
-    .app-icon.shell { background:#222; color:#d5f5ff; font-size:11px; }
-    .app-icon.browser { background:linear-gradient(135deg,#fbbc05,#34a853 45%,#4285f4); color:#fff; }
-    .timeline-card-body { position:relative; z-index:1; min-width:0; }
-    .timeline-card-title { color:#2d251e; font-size:13px; font-weight:800; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .timeline-card-time { margin-top:2px; color:#6f6257; font-size:11px; font-weight:650; font-variant-numeric:tabular-nums; }
-    .timeline-start-dot { position:absolute; left:58px; width:10px; height:10px; border-radius:999px; background:#d43b3b; box-shadow:0 0 0 3px rgba(255,250,241,.9); z-index:5; }
-    @media(max-width: 820px) { main.wrap { grid-template-columns: 1fr; } .item { grid-template-columns: 76px minmax(0,1fr); } .timeline-viz-header { flex-direction:column; } .view-toggle { align-self:flex-start; } .vertical-timeline { min-width:560px; padding-left:66px; } .timeline-rail { left:54px; } .timeline-card { left:74px; } .time-tick-label { left:-68px; width:48px; } .time-tick-dot, .timeline-start-dot { left:50px; } }
+    .timeline-scale { position:relative; height:34px; margin-left:148px; border-bottom:1px solid var(--line); min-width:760px; background:linear-gradient(180deg,rgba(255,255,255,.34),rgba(255,255,255,0)); }
+    .tick { position:absolute; top:0; bottom:0; border-left:1px solid rgba(121,108,95,.28); pointer-events:none; }
+    .tick span { position:absolute; top:2px; transform:translateX(-50%); padding:1px 4px; border-radius:6px; background:rgba(255,250,241,.88); font-size:11px; color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .lane { display:grid; grid-template-columns:140px minmax(760px, 1fr); min-width:900px; min-height:38px; align-items:center; }
+    .lane-label { min-width:0; max-width:140px; font-size:12px; color:#5d5146; padding:0 12px 0 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:650; }
+    .lane-track { position:relative; height:38px; border-bottom:1px dashed rgba(203,184,163,.82); background:linear-gradient(180deg,rgba(255,255,255,.32),rgba(255,255,255,0)); }
+    .lane-track .tick { opacity:.55; }
+    .lane-track .tick span { display:none; }
+    .timeline-band { appearance:none; position:absolute; top:8px; height:20px; padding:0; border-radius:999px; min-width:8px; cursor:pointer; border:1px solid rgba(255,255,255,.52); box-shadow:0 3px 10px rgba(36,28,22,.16), inset 0 1px 0 rgba(255,255,255,.28); transition:transform .14s ease, box-shadow .14s ease, filter .14s ease; }
+    .timeline-band::after { content:''; position:absolute; inset:2px 5px auto; height:38%; border-radius:999px; background:rgba(255,255,255,.22); pointer-events:none; }
+    .timeline-band:hover, .timeline-band:focus { z-index:3; transform:translateY(-1px) scaleY(1.08); filter:saturate(1.1); box-shadow:0 8px 18px rgba(36,28,22,.22), 0 0 0 3px rgba(155,92,37,.12); outline:none; }
+    .timeline-band.app { background:linear-gradient(90deg,#d98a38,var(--app) 55%,var(--app-dark)); }
+    .timeline-band.web { background:linear-gradient(90deg,#45a6c7,var(--web) 55%,var(--web-dark)); }
+    @media(max-width: 820px) { main.wrap { grid-template-columns: 1fr; } .item { grid-template-columns: 76px minmax(0,1fr); } .timeline-viz-header { flex-direction:column; } .view-toggle { align-self:flex-start; } .timeline-scale { margin-left:118px; min-width:680px; } .lane { grid-template-columns:110px minmax(680px,1fr); min-width:790px; } .lane-label { max-width:110px; font-size:11px; } }
   </style>
 </head>
 <body>
@@ -118,7 +108,7 @@ HTML = """<!doctype html>
         <div class="timeline-viz-header">
           <div>
             <p class="stat-title">活动带时间轴</p>
-            <div class="sub">竖向时间轴展示活动带，卡片内暂时只放应用/网站图标和名称。</div>
+            <div class="sub">每个事件一条轨道，色块长度表示持续区间。</div>
           </div>
           <div class="view-toggle">
             <button id="compactRangeBtn" class="active" onclick="setRangeMode('compact')">紧凑</button>
@@ -173,12 +163,12 @@ function buildTimelineRange(data){
   const maxEnd = Math.max(...bands.map(b => Number(b.end_ts||0)));
   return { rangeStart: floorToHour(minStart), rangeEnd: ceilToHour(maxEnd) };
 }
-function buildTicks(rangeStart, rangeEnd, stepSeconds = 3600){
+function buildTicks(rangeStart, rangeEnd){
   const ticks = [];
   let cursor = ceilToHour(rangeStart);
   while(cursor <= rangeEnd){
     ticks.push(cursor);
-    cursor += stepSeconds;
+    cursor += 3600;
   }
   return ticks;
 }
@@ -198,32 +188,6 @@ function bandTooltip(band){
     samples.length ? '样本：\\n' + samples.join('\\n') : ''
   ].filter(Boolean).join('\\n');
 }
-function labelForBand(band){
-  const raw = (band.title || band.subtitle || band.event_key || '活动').replace(/^app:|^web:/, '');
-  return raw.length > 44 ? raw.slice(0, 43) + '…' : raw;
-}
-function iconForBand(band){
-  const text = [band.event_key, band.title, band.subtitle, band.detail].join(' ').toLowerCase();
-  if(text.includes('youtube')) return { cls:'youtube', text:'▶' };
-  if(text.includes('github')) return { cls:'github', text:'GH' };
-  if(text.includes('chatgpt') || text.includes('openai') || text.includes('codex')) return { cls:'chatgpt', text:'✺' };
-  if(text.includes('twitter') || text.includes('x.com')) return { cls:'x', text:'𝕏' };
-  if(text.includes('code.exe') || text.includes('cursor') || text.includes('antigravity')) return { cls:'code', text:'</>' };
-  if(text.includes('powershell') || text.includes('terminal') || text.includes('cmd.exe')) return { cls:'shell', text:'>_' };
-  if(text.includes('chrome') || text.includes('edge') || text.includes('browser')) return { cls:'browser', text:'●' };
-  if(text.includes('explorer.exe')) return { cls:'', text:'📁' };
-  if(band.event_type === 'web') return { cls:'browser', text:(labelForBand(band)[0] || 'W').toUpperCase() };
-  return { cls:'', text:(labelForBand(band)[0] || 'A').toUpperCase() };
-}
-function assignVisualColumns(bands){
-  const activeEnds = [];
-  return bands.map((band, index) => {
-    let column = activeEnds.findIndex(end => Number(band.start_ts||0) >= end + 60);
-    if(column === -1){ column = activeEnds.length; activeEnds.push(0); }
-    activeEnds[column] = Math.max(activeEnds[column], Number(band.end_ts||0));
-    return {...band, _index:band._index ?? index, _column:Math.min(column, 4)};
-  });
-}
 function renderTimelineViz(data){
   const viz = document.getElementById('timelineViz');
   const chart = document.getElementById('timelineChart');
@@ -235,27 +199,33 @@ function renderTimelineViz(data){
     return;
   }
   const { rangeStart, rangeEnd } = buildTimelineRange(data);
-  const duration = Math.max(1, rangeEnd - rangeStart);
-  const minutesInRange = duration / 60;
-  const pixelsPerMinute = rangeMode === 'full' ? 0.9 : 2.2;
-  const chartHeight = Math.max(360, Math.min(1800, Math.round(minutesInRange * pixelsPerMinute)));
-  const tickStep = duration <= 2 * 3600 ? 1800 : 3600;
-  const ticks = buildTicks(rangeStart, rangeEnd, tickStep);
-  const yOf = ts => Math.max(0, Math.min(chartHeight, (Number(ts||0) - rangeStart) / duration * chartHeight));
-  const tickHtml = ticks.map(t => `<div class="time-tick" style="top:${yOf(t).toFixed(1)}px"><span class="time-tick-label">${fmt(t)}</span><span class="time-tick-dot"></span></div>`).join('');
-  const visualBands = assignVisualColumns(bands.map((band, index) => ({...band, _index:index})).sort((a, b) => Number(a.start_ts||0) - Number(b.start_ts||0) || Number(b.end_ts||0) - Number(a.end_ts||0)));
-  const cardHtml = visualBands.map(band => {
-    const top = yOf(band.start_ts);
-    const bottom = yOf(band.end_ts);
-    const height = Math.max(42, bottom - top);
-    const offset = Number(band._column || 0) * 18;
-    const icon = iconForBand(band);
-    const label = labelForBand(band);
-    const typeClass = band.event_type === 'web' ? 'web' : 'app';
-    const shortClass = height <= 48 ? ' short' : '';
-    return `<span class="timeline-start-dot" style="top:${Math.max(0, top - 5).toFixed(1)}px"></span><button type="button" class="timeline-card ${typeClass}${shortClass}" style="top:${top.toFixed(1)}px;min-height:${height.toFixed(1)}px;left:${86 + offset}px;right:${offset}px" title="${esc(bandTooltip(band))}" aria-label="定位到 ${esc(label)} ${fmt(band.start_ts)} 到 ${fmt(band.end_ts)}" onclick="focusBandItem(${Number(band._index)})"><span class="app-icon ${icon.cls}">${esc(icon.text)}</span><span class="timeline-card-body"><span class="timeline-card-title">${esc(label)}</span><span class="timeline-card-time">${fmt(band.start_ts)} to ${fmt(band.end_ts)}</span></span></button>`;
+  const ticks = buildTicks(rangeStart, rangeEnd);
+  const tickHtml = ticks.map(t => `<div class="tick" style="left:${pct(t, rangeStart, rangeEnd).toFixed(3)}%"><span>${fmt(t)}</span></div>`).join('');
+  const laneMap = new Map();
+  bands.forEach((band, index) => {
+    band._index = index;
+    const key = band.event_key || 'unknown:' + index;
+    if(!laneMap.has(key)){
+      laneMap.set(key, { key, label: band.title || key, firstStart: Number(band.start_ts||0), totalSeconds: 0, bands: [] });
+    }
+    const lane = laneMap.get(key);
+    lane.firstStart = Math.min(lane.firstStart, Number(band.start_ts||0));
+    lane.totalSeconds += Number(band.total_active_seconds||0);
+    lane.bands.push(band);
+  });
+  const lanes = Array.from(laneMap.values()).sort((a, b) => a.firstStart - b.firstStart || b.totalSeconds - a.totalSeconds);
+  const laneHtml = lanes.map(lane => {
+    const blocks = lane.bands.map(band => {
+      const left = Math.max(0, Math.min(100, pct(band.start_ts, rangeStart, rangeEnd)));
+      const rawWidth = pct(band.end_ts, rangeStart, rangeEnd) - pct(band.start_ts, rangeStart, rangeEnd);
+      const width = Math.min(100 - left, Math.max(0.6, rawWidth));
+      const typeClass = band.event_type === 'web' ? 'web' : 'app';
+      const label = band.title || band.event_key || '活动';
+      return `<button type="button" class="timeline-band ${typeClass}" style="left:${left.toFixed(3)}%;width:${width.toFixed(3)}%" title="${esc(bandTooltip(band))}" aria-label="定位到 ${esc(label)} ${fmt(band.start_ts)} 到 ${fmt(band.end_ts)}" onclick="focusBandItem(${Number(band._index)})"></button>`;
+    }).join('');
+    return `<div class="lane"><div class="lane-label" title="${esc(lane.label)}">${esc(lane.label)}</div><div class="lane-track">${tickHtml}${blocks}</div></div>`;
   }).join('');
-  chart.innerHTML = `<div class="vertical-timeline" style="height:${chartHeight}px"><div class="timeline-rail"></div>${tickHtml}${cardHtml}</div>`;
+  chart.innerHTML = `<div class="timeline-scale">${tickHtml}</div>${laneHtml}`;
 }
 function renderBars(el, rows, nameKey, valueKey, suffix){
   const max = Math.max(1, ...rows.map(r=>Number(r[valueKey]||0)));
