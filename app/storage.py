@@ -1,17 +1,23 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import sqlite3
 import time
 from contextlib import contextmanager
-from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Optional
+from typing import Any, Iterator, Optional
 
-from .browser_history import BrowserVisit
 from .config import DATA_DIR, DB_PATH
 from .windows_activity import ForegroundWindow
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+BROWSER_PROCESS_NAMES = {
+    "chrome.exe",
+    "msedge.exe",
+    "brave.exe",
+    "firefox.exe",
+    "roxychrome.exe",
+    "roxybrowser.exe",
+}
 
 
 def ensure_data_dir() -> None:
@@ -57,24 +63,6 @@ def init_db(db_path: Path = DB_PATH) -> None:
               ON foreground_events(start_ts);
             CREATE INDEX IF NOT EXISTS idx_foreground_events_process
               ON foreground_events(process_name);
-
-            CREATE TABLE IF NOT EXISTS browser_visits (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              browser TEXT NOT NULL,
-              profile TEXT NOT NULL,
-              visit_ts INTEGER NOT NULL,
-              url TEXT NOT NULL,
-              title TEXT,
-              visit_count INTEGER NOT NULL DEFAULT 0,
-              typed_count INTEGER NOT NULL DEFAULT 0,
-              created_at INTEGER NOT NULL,
-              UNIQUE(browser, profile, visit_ts, url)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_browser_visits_time
-              ON browser_visits(visit_ts);
-            CREATE INDEX IF NOT EXISTS idx_browser_visits_browser
-              ON browser_visits(browser, profile);
             """
         )
         con.execute(
@@ -84,17 +72,30 @@ def init_db(db_path: Path = DB_PATH) -> None:
 
 
 def _same_window(row: sqlite3.Row, window: ForegroundWindow) -> bool:
+    window_title = safe_window_title(window.process_name, window.title)
     return (
         int(row["pid"] or 0) == window.pid
         and str(row["process_name"] or "") == window.process_name
-        and str(row["window_title"] or "") == window.title
+        and str(row["window_title"] or "") == window_title
     )
+
+
+def is_browser_process(process_name: str) -> bool:
+    return (process_name or "").strip().lower() in BROWSER_PROCESS_NAMES
+
+
+def safe_window_title(process_name: str, window_title: str | None = None) -> str:
+    """浏览器窗口标题通常就是具体标签页标题，默认不再入库或输出。"""
+    if is_browser_process(process_name):
+        return "浏览器窗口"
+    return str(window_title or "")
 
 
 def record_foreground_window(window: ForegroundWindow, now_ts: Optional[int] = None) -> str:
     """写入前台窗口事件。连续相同窗口会延长上一条记录。"""
     init_db()
     now = int(now_ts or time.time())
+    window_title = safe_window_title(window.process_name, window.title)
     with connect() as con:
         last = con.execute(
             "SELECT * FROM foreground_events ORDER BY start_ts DESC, id DESC LIMIT 1"
@@ -123,38 +124,11 @@ def record_foreground_window(window: ForegroundWindow, now_ts: Optional[int] = N
                 window.pid,
                 window.process_name,
                 window.exe_path,
-                window.title,
+                window_title,
                 now,
             ),
         )
         return "inserted"
-
-
-def insert_browser_visits(visits: Iterable[BrowserVisit]) -> int:
-    init_db()
-    now = int(time.time())
-    inserted = 0
-    with connect() as con:
-        for visit in visits:
-            cur = con.execute(
-                """
-                INSERT OR IGNORE INTO browser_visits(
-                  browser, profile, visit_ts, url, title, visit_count, typed_count, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    visit.browser,
-                    visit.profile,
-                    visit.visit_time,
-                    visit.url,
-                    visit.title,
-                    visit.visit_count,
-                    visit.typed_count,
-                    now,
-                ),
-            )
-            inserted += cur.rowcount
-    return inserted
 
 
 def fetch_foreground_events(start_ts: int, end_ts: int) -> list[sqlite3.Row]:
@@ -170,22 +144,6 @@ def fetch_foreground_events(start_ts: int, end_ts: int) -> list[sqlite3.Row]:
                 (end_ts, start_ts),
             )
         )
-
-
-def fetch_browser_visits(start_ts: int, end_ts: int) -> list[sqlite3.Row]:
-    init_db()
-    with connect() as con:
-        return list(
-            con.execute(
-                """
-                SELECT * FROM browser_visits
-                WHERE visit_ts BETWEEN ? AND ?
-                ORDER BY visit_ts ASC, id ASC
-                """,
-                (start_ts, end_ts),
-            )
-        )
-
 
 def fetch_stats(start_ts: int, end_ts: int) -> dict[str, Any]:
     init_db()
@@ -203,17 +161,7 @@ def fetch_stats(start_ts: int, end_ts: int) -> dict[str, Any]:
             """,
             (end_ts, start_ts),
         ).fetchall()
-        browser_rows = con.execute(
-            """
-            SELECT browser, COUNT(*) AS count
-            FROM browser_visits
-            WHERE visit_ts BETWEEN ? AND ?
-            GROUP BY browser
-            ORDER BY count DESC
-            """,
-            (start_ts, end_ts),
-        ).fetchall()
     return {
         "apps": [dict(row) for row in app_rows],
-        "browsers": [dict(row) for row in browser_rows],
+        "browsers": [],
     }

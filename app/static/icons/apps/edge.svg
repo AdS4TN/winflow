@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Microsoft Edge">
+  <defs>
+    <linearGradient id="edgeA" x1="8" x2="58" y1="50" y2="12" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#22c55e"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#edgeA)" d="M58 36c0 13-10 23-25 23-14 0-27-9-27-25C6 18 19 5 34 5c13 0 24 9 24 22 0 4-1 7-3 9z"/>
+  <path fill="#0f172a" opacity=".28" d="M54 38c-3 6-9 10-18 10-11 0-17-6-17-13 0-9 8-16 20-15 8 1 14 7 15 18z"/>
+  <path fill="#f8fafc" opacity=".9" d="M20 35c1 8 8 13 18 13 7 0 13-2 17-7-3 11-12 18-25 18C16 59 6 49 6 35c0-1 0-2 1-4 3 4 8 5 13 4z"/>
+</svg>

@@ -4,11 +4,19 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Iterable
-from urllib.parse import urlparse
 
 from . import config
-from .storage import fetch_browser_visits, fetch_foreground_events
+from .storage import fetch_foreground_events, safe_window_title
 from .timeline import day_bounds
+
+IGNORED_PROCESS_NAMES = {
+    "lockapp.exe",
+    "logonui.exe",
+    "credentialuibroker.exe",
+    "shellexperiencehost.exe",
+    "searchhost.exe",
+    "startmenuexperiencehost.exe",
+}
 
 
 @dataclass(frozen=True)
@@ -37,8 +45,19 @@ class ActivityBand:
     sample_titles: list[str]
     sample_details: list[str]
 
+    @property
+    def id(self) -> str:
+        return self.event_key
+
+    @property
+    def kind(self) -> str:
+        return self.event_type
+
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        item = asdict(self)
+        item["id"] = self.id
+        item["kind"] = self.kind
+        return item
 
 
 @dataclass
@@ -65,13 +84,6 @@ def _clean_text(value: Any, fallback: str = "") -> str:
     return text if text else fallback
 
 
-def _domain_of(url: str) -> str:
-    host = urlparse(url or "").netloc.lower()
-    if host.startswith("www."):
-        host = host[4:]
-    return host or (url or "")[:60] or "unknown"
-
-
 def _append_sample(samples: list[str], value: str, max_count: int) -> None:
     value = _clean_text(value)
     if value and value not in samples and len(samples) < max_count:
@@ -93,8 +105,8 @@ def normalize_foreground_rows(rows: Iterable[Any]) -> list[NormalizedEvent]:
         if end_ts < start_ts:
             end_ts = start_ts
         process_name = _clean_text(_row_get(row, "process_name"), "Unknown")
-        window_title = _clean_text(_row_get(row, "window_title"), "无窗口标题")
-        exe_path = _clean_text(_row_get(row, "exe_path"))
+        window_title = _clean_text(safe_window_title(process_name, _row_get(row, "window_title")), "无窗口标题")
+        # exe_path 只用于本地图标提取，不应进入公开活动带 API。
         if _is_ignorable_system_shell(process_name, window_title):
             continue
         events.append(
@@ -105,7 +117,7 @@ def normalize_foreground_rows(rows: Iterable[Any]) -> list[NormalizedEvent]:
                 end_ts=end_ts,
                 title=process_name,
                 subtitle=window_title,
-                detail=exe_path,
+                detail="",
                 source="foreground",
             )
         )
@@ -119,7 +131,10 @@ def _is_ignorable_system_shell(process_name: str, window_title: str) -> bool:
     文件资源管理器窗口应保留；任务切换、桌面等系统外壳事件应忽略，
     否则频繁切屏会把 explorer.exe 错误聚合成活动带。
     """
-    if process_name.lower() != "explorer.exe":
+    process_key = process_name.strip().lower()
+    if process_key in IGNORED_PROCESS_NAMES:
+        return True
+    if process_key != "explorer.exe":
         return False
     normalized_title = window_title.strip().lower()
     return normalized_title in {
@@ -130,30 +145,6 @@ def _is_ignorable_system_shell(process_name: str, window_title: str) -> bool:
         "task switching",
         "start",
     }
-
-
-def normalize_browser_rows(rows: Iterable[Any]) -> list[NormalizedEvent]:
-    events: list[NormalizedEvent] = []
-    for row in rows:
-        visit_ts = int(_row_get(row, "visit_ts", 0) or 0)
-        url = _clean_text(_row_get(row, "url"))
-        domain = _domain_of(url)
-        title = _clean_text(_row_get(row, "title"), domain)
-        browser = _clean_text(_row_get(row, "browser"), "browser")
-        profile = _clean_text(_row_get(row, "profile"), "profile")
-        events.append(
-            NormalizedEvent(
-                event_key=f"web:{domain}",
-                event_type="web",
-                start_ts=visit_ts,
-                end_ts=visit_ts,
-                title=domain,
-                subtitle=title,
-                detail=url,
-                source=f"{browser} / {profile}",
-            )
-        )
-    return events
 
 
 def build_bands_from_events(
@@ -176,7 +167,7 @@ def build_bands_from_events(
         end_ts = min(day_end_ts, int(event.end_ts))
         if start_ts > day_end_ts or end_ts < day_start_ts:
             continue
-        is_point = event.event_type == "web" or end_ts <= start_ts
+        is_point = end_ts <= start_ts
         if is_point:
             bucket_start = day_start_ts + ((start_ts - day_start_ts) // bucket_seconds) * bucket_seconds
             bucket_end = min(bucket_start + bucket_seconds, day_end_ts + 1)
@@ -329,7 +320,7 @@ def _build_boundary_fallback_candidates(
         for event in key_events:
             start_ts = max(day_start_ts, int(event.start_ts))
             raw_end_ts = min(day_end_ts, int(event.end_ts))
-            is_point = event.event_type == "web" or raw_end_ts <= start_ts
+            is_point = raw_end_ts <= start_ts
             end_ts = max(start_ts, min(start_ts + point_event_seconds, day_end_ts)) if is_point else raw_end_ts
             active_seconds = point_event_seconds if is_point else max(0, end_ts - start_ts)
 
@@ -436,12 +427,16 @@ def _merge_candidate_bands(
 def build_activity_bands(day: str | None = None) -> dict[str, Any]:
     start_ts, end_ts = day_bounds(day)
     events = normalize_foreground_rows(fetch_foreground_events(start_ts, end_ts))
-    events.extend(normalize_browser_rows(fetch_browser_visits(start_ts, end_ts)))
     bands = build_bands_from_events(events, start_ts, end_ts)
     return {
+        "schema_version": 1,
         "day": datetime.fromtimestamp(start_ts).strftime("%Y-%m-%d"),
         "start_ts": start_ts,
         "end_ts": end_ts,
+        "range": {
+            "start_ts": start_ts,
+            "end_ts": end_ts,
+        },
         "generated_at": int(time.time()),
         "bands": [band.to_dict() for band in bands],
         "stats": _build_stats(bands),

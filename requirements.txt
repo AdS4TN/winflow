@@ -1,6 +1,2 @@
-﻿# 当前 MVP 只使用 Python 标准库，无需安装第三方依赖。
-# 后续如果加入托盘、OCR、截图、AI，可以再添加：
-# pillow
-# mss
-# pystray
-# requests
+# 图标导出后处理：裁剪透明边界、放大低分辨率 exe 图标并居中。
+pillow

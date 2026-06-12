@@ -1,6 +1,45 @@
-﻿__pycache__/
+# Python
+__pycache__/
 *.py[cod]
-.env
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
 .venv/
+venv/
+env/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Winflow local runtime data
+# These files can contain private application activity and must never be committed.
 data/*.sqlite
 data/*.sqlite-*
+data/upload-pending/
+data/icon_map.json
+logs/
+*.log
+
+# Extracted local Windows exe icons. Keep only the placeholder so the directory exists.
+static/exe-icons/*
+!static/exe-icons/.gitkeep
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Private local planning drafts
+docs/internal/
+winflow-uploader*.log

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PowerShell">
+  <rect x="6" y="11" width="52" height="42" rx="7" fill="#2563eb"/>
+  <path d="m18 23 10 9-10 9" fill="none" stroke="#eff6ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M34 41h12" stroke="#eff6ff" stroke-width="5" stroke-linecap="round"/>
+</svg>

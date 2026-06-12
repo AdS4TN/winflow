@@ -1,8 +1,8 @@
-﻿"""活动带核心算法测试。
+"""活动带核心算法测试。
 
-这些测试只面向 Agent A 提供的纯函数接口：
-`app.activity_bands.NormalizedEvent` 与 `build_bands_from_events`。
-生产代码尚未合入时，测试会被跳过；一旦接口存在，应覆盖开发文档第 9 节的 6 个必测用例。
+这些测试面向 `app.activity_bands.NormalizedEvent` 与
+`build_bands_from_events` 两个纯函数接口，覆盖频繁切屏、阈值过滤、
+跨 15 分钟窗口和隐私脱敏等核心规则。
 """
 
 from __future__ import annotations
@@ -11,14 +11,7 @@ from datetime import datetime, timezone
 import inspect
 import unittest
 
-try:
-    from app.activity_bands import NormalizedEvent, build_bands_from_events
-except ImportError as exc:  # pragma: no cover - 仅用于并行开发期间等待 Agent A 合入
-    NormalizedEvent = None
-    build_bands_from_events = None
-    IMPORT_ERROR = exc
-else:
-    IMPORT_ERROR = None
+from app.activity_bands import NormalizedEvent, build_bands_from_events
 
 
 BASE_DAY = "2026-05-18"
@@ -37,12 +30,8 @@ def band_value(band, name: str):
     return getattr(band, name)
 
 
-@unittest.skipIf(
-    IMPORT_ERROR is not None,
-    f"app.activity_bands 尚不可导入，等待 Agent A 合入核心算法：{IMPORT_ERROR}",
-)
 class ActivityBandsAlgorithmTest(unittest.TestCase):
-    """开发文档第 9.2 节活动带聚合规则测试。"""
+    """活动带聚合规则测试。"""
 
     def app_event(self, start: str, end: str, process_name: str = "Code.exe"):
         return NormalizedEvent(
@@ -56,20 +45,20 @@ class ActivityBandsAlgorithmTest(unittest.TestCase):
             source=process_name,
         )
 
-    def web_event(self, at: str, domain: str = "github.com", index: int = 0):
+    def point_app_event(self, at: str, process_name: str = "WindowsTerminal.exe", index: int = 0):
         return NormalizedEvent(
-            event_key=f"web:{domain}",
-            event_type="web",
+            event_key=f"app:{process_name}",
+            event_type="app",
             start_ts=ts(at),
             end_ts=ts(at),
-            title=f"{domain} page {index}",
-            subtitle=domain,
-            detail=f"https://{domain}/page-{index}",
-            source=domain,
+            title=process_name,
+            subtitle=f"{process_name} quick hit {index}",
+            detail="",
+            source=process_name,
         )
 
     def build(self, events):
-        """调用纯函数；若 Agent A 支持 day 参数则传入固定日期。"""
+        """调用纯函数；兼容历史版本中的 day 参数签名。"""
         signature = inspect.signature(build_bands_from_events)
         parameters = signature.parameters
         if "day_start_ts" in parameters and "day_end_ts" in parameters:
@@ -97,6 +86,8 @@ class ActivityBandsAlgorithmTest(unittest.TestCase):
 
         band = self.assert_single_band(bands, "app:Code.exe")
         self.assertEqual("app", band_value(band, "event_type"))
+        self.assertEqual("app:Code.exe", band_value(band, "id"))
+        self.assertEqual("app", band_value(band, "kind"))
         self.assertEqual(ts("09:00"), band_value(band, "start_ts"))
         self.assertEqual(ts("09:04"), band_value(band, "end_ts"))
         self.assertGreaterEqual(band_value(band, "total_active_seconds"), 180)
@@ -107,20 +98,20 @@ class ActivityBandsAlgorithmTest(unittest.TestCase):
 
         self.assertEqual([], self.bands_for(bands, "app:Code.exe"))
 
-    def test_five_web_hits_within_three_minutes_create_band(self):
-        """用例 3：3 分钟内同域名访问 5 次，应生成 web:github.com。"""
+    def test_five_short_app_hits_within_three_minutes_create_band(self):
+        """用例 3：3 分钟内同一应用命中 5 次，应生成该应用活动带。"""
         events = [
-            self.web_event("09:00", index=1),
-            self.web_event("09:01", index=2),
-            self.web_event("09:01", index=3),
-            self.web_event("09:02", index=4),
-            self.web_event("09:02", index=5),
+            self.point_app_event("09:00", index=1),
+            self.point_app_event("09:01", index=2),
+            self.point_app_event("09:01", index=3),
+            self.point_app_event("09:02", index=4),
+            self.point_app_event("09:02", index=5),
         ]
 
         bands = self.build(events)
 
-        band = self.assert_single_band(bands, "web:github.com")
-        self.assertEqual("web", band_value(band, "event_type"))
+        band = self.assert_single_band(bands, "app:WindowsTerminal.exe")
+        self.assertEqual("app", band_value(band, "event_type"))
         self.assertGreaterEqual(band_value(band, "hit_count"), 5)
 
     def test_a_b_a_frequent_switching_merges_same_app_band(self):
@@ -170,19 +161,19 @@ class ActivityBandsAlgorithmTest(unittest.TestCase):
         self.assertEqual(ts("09:14"), band_value(band, "start_ts"))
         self.assertEqual(ts("09:17"), band_value(band, "end_ts"))
 
-    def test_five_web_hits_across_bucket_boundary_still_creates_band(self):
-        """边界补偿：5 次访问横跨 09:15 桶边界时也不应被拆散漏判。"""
+    def test_five_short_app_hits_across_bucket_boundary_still_creates_band(self):
+        """边界补偿：5 次应用命中横跨 09:15 桶边界时也不应被拆散漏判。"""
         events = [
-            self.web_event("09:14", index=1),
-            self.web_event("09:14", index=2),
-            self.web_event("09:14", index=3),
-            self.web_event("09:15", index=4),
-            self.web_event("09:15", index=5),
+            self.point_app_event("09:14", index=1),
+            self.point_app_event("09:14", index=2),
+            self.point_app_event("09:14", index=3),
+            self.point_app_event("09:15", index=4),
+            self.point_app_event("09:15", index=5),
         ]
 
         bands = self.build(events)
 
-        band = self.assert_single_band(bands, "web:github.com")
+        band = self.assert_single_band(bands, "app:WindowsTerminal.exe")
         self.assertGreaterEqual(band_value(band, "hit_count"), 5)
 
     def test_explorer_task_switching_shell_event_is_filtered(self):
@@ -221,6 +212,103 @@ class ActivityBandsAlgorithmTest(unittest.TestCase):
 
         self.assertEqual(1, len(events))
         self.assertEqual("app:explorer.exe", events[0].event_key)
+
+    def test_browser_window_title_is_redacted(self):
+        """浏览器窗口标题通常是具体标签页标题，应脱敏成固定文案。"""
+        from app.activity_bands import normalize_foreground_rows
+
+        rows = [
+            {
+                "start_ts": ts("09:00"),
+                "end_ts": ts("09:10"),
+                "process_name": "chrome.exe",
+                "window_title": "Secret Page - Google Chrome",
+                "exe_path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+            }
+        ]
+
+        events = normalize_foreground_rows(rows)
+
+        self.assertEqual(1, len(events))
+        self.assertEqual("app:chrome.exe", events[0].event_key)
+        self.assertEqual("浏览器窗口", events[0].subtitle)
+        self.assertNotIn("Secret Page", str(events[0]))
+
+    def test_foreground_exe_path_is_not_exposed_in_band_event_detail(self):
+        """活动带公开 API 不应输出真实 exe_path。"""
+        from app.activity_bands import normalize_foreground_rows
+
+        rows = [
+            {
+                "start_ts": ts("09:00"),
+                "end_ts": ts("09:10"),
+                "process_name": "Code.exe",
+                "window_title": "workspace",
+                "exe_path": "C:\\Users\\Alice\\Private\\Code.exe",
+            }
+        ]
+
+        events = normalize_foreground_rows(rows)
+
+        self.assertEqual(1, len(events))
+        self.assertEqual("", events[0].detail)
+        self.assertNotIn("Private", str(events[0]))
+
+    def test_lock_and_credential_windows_are_filtered(self):
+        """锁屏和凭据窗口不是用户任务，不应进入活动带。"""
+        from app.activity_bands import normalize_foreground_rows
+
+        rows = [
+            {
+                "start_ts": ts("09:00"),
+                "end_ts": ts("09:10"),
+                "process_name": "LockApp.exe",
+                "window_title": "Windows 默认锁屏界面",
+                "exe_path": "C:\\WINDOWS\\SystemApps\\Microsoft.LockApp\\LockApp.exe",
+            },
+            {
+                "start_ts": ts("09:10"),
+                "end_ts": ts("09:20"),
+                "process_name": "CredentialUIBroker.exe",
+                "window_title": "Windows 凭据输入界面",
+                "exe_path": "C:\\WINDOWS\\System32\\CredentialUIBroker.exe",
+            },
+        ]
+
+        self.assertEqual([], normalize_foreground_rows(rows))
+
+    def test_build_activity_bands_response_schema_is_stable(self):
+        """公开 /api/bands 响应应包含版本和时间范围字段。"""
+        from unittest.mock import patch
+
+        from app.activity_bands import build_activity_bands
+
+        rows = [
+            {
+                "start_ts": ts("09:00"),
+                "end_ts": ts("09:10"),
+                "process_name": "Code.exe",
+                "window_title": "workspace",
+                "exe_path": "C:\\Users\\Alice\\Private\\Code.exe",
+            }
+        ]
+
+        with patch("app.activity_bands.day_bounds", return_value=(ts("00:00"), ts("23:59") + 59)), patch(
+            "app.activity_bands.fetch_foreground_events",
+            return_value=rows,
+        ):
+            payload = build_activity_bands(BASE_DAY)
+
+        self.assertEqual(1, payload["schema_version"])
+        self.assertEqual({"start_ts": ts("00:00"), "end_ts": ts("23:59") + 59}, payload["range"])
+        self.assertEqual(ts("00:00"), payload["start_ts"])
+        self.assertEqual(ts("23:59") + 59, payload["end_ts"])
+        band = payload["bands"][0]
+        self.assertEqual("app:Code.exe", band["id"])
+        self.assertEqual("app", band["kind"])
+        self.assertEqual("", band["detail"])
+        self.assertEqual([], band["sample_details"])
+        self.assertNotIn("Private", str(payload))
 
 
 if __name__ == "__main__":
