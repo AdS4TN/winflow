@@ -8,6 +8,18 @@ Winflow is a local-first automatic work journal for Windows.
 
 换句话说：Dayflow 是产品参考，不是实现参考。Winflow 的核心路线是 Windows 原生采集与 Windows 桌面体验。
 
+## 项目速览
+
+| 维度 | 内容 |
+| --- | --- |
+| 场景 | Windows 个人工作回顾与应用使用统计 |
+| 运行方式 | Python 3.11+，本地 CLI + Web 页面 |
+| 核心技术 | Win32 前台窗口 API、SQLite、Python HTTP 服务、Pillow |
+| 关键设计 | 本地优先、浏览器标题脱敏、活动带聚合、显式选择上传 |
+| 当前阶段 | Alpha 原型，没有托盘安装器或生产 SLA 承诺 |
+
+**阅读路径：** `app/main.py` → `app/collector.py` → `app/storage.py` → `app/activity_bands.py` / `app/app_usage.py` → `app/web.py`。仓库提供源码与测试，不包含个人活动数据库。功能描述来自实现，不代表所有 Windows 环境均已验收。
+
 ## 为什么做 Winflow
 
 传统时间追踪工具通常要求你手动开始/停止计时，或者只告诉你“哪个应用打开了多久”。Winflow 更关注个人回顾场景：
@@ -139,7 +151,7 @@ app/activity_bands.py      app/app_usage.py
 当前 alpha 版本仍推荐从仓库源码目录运行，便于审计代码、查看本地数据和参与开发：
 
 ```powershell
-git clone https://github.com/OWNER/winflow.git
+git clone https://github.com/AdS4TN/winflow.git
 cd winflow
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -260,6 +272,8 @@ docs/                  # 设计与接入文档
 ```
 
 ## 开发与测试
+
+本地核验（2026-09-18，Python 3.12）：语法检查与 49 项 unittest 测试通过。本轮未执行打包审计、真实桌面采集和外部上传验证。
 
 ```powershell
 python -m compileall -q app tests scripts
