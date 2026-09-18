@@ -4,10 +4,6 @@
 
 Winflow is a local-first automatic work journal for Windows.
 
-它借鉴 [Dayflow](https://github.com/JerryZLiu/Dayflow) 的产品方向：自动记录、时间线回看、local-first、开源透明。但 Winflow **不是 macOS 移植版，也不采用 macOS/Swift/ScreenCaptureKit 技术路线**。Winflow 是 Windows-first 项目，从 Win32 前台窗口、Windows 进程名、exe/快捷方式图标和本地 SQLite 出发，先做好轻量、可控、隐私默认安全的应用使用日志。
-
-换句话说：Dayflow 是产品参考，不是实现参考。Winflow 的核心路线是 Windows 原生采集与 Windows 桌面体验。
-
 ## 项目速览
 
 | 维度 | 内容 |
@@ -51,9 +47,6 @@ Winflow 还处于早期阶段，但已经具备可运行的本地闭环：
 | 活动带聚合 | 以 15 分钟窗口、3 分钟停留、3 分钟合并间隔整理细碎切屏 | 适合频繁切浏览器、编辑器、终端、聊天工具的真实工作流 |
 | 应用使用统计 | `/usage` 与 `/api/apps/usage` 输出应用级时长、次数、颜色和图标 | 可以直接接入个人网站或本地 dashboard |
 | Windows exe 图标 | 从 exe 或快捷方式提取图标，缓存到本地 | 比默认字母图标更接近真实桌面体验 |
-| 本地 Web 预览 | `python -m app.main serve --with-collector` 启动本地控制台 | 方便验证采集和聚合结果 |
-| 可选自托管上传 | 只在显式配置服务器和 token 后上传聚合快照 | 个人网站可以展示统计结果，同时不暴露原始窗口数据 |
-| 隐私默认安全 | 默认不截图、不录屏、不读浏览器历史、不上传、不调用 AI | 适合作为长期后台工具逐步完善 |
 
 ### 自动应用时间线
 
@@ -129,11 +122,9 @@ app/activity_bands.py      app/app_usage.py
 - 不截图；
 - 不录屏；
 - 不做 OCR；
-- 不调用 AI/LLM；
 - 不读取浏览器历史；
 - 不上传服务器；
 - 不展示浏览器具体标签页或站点；
-- 不在应用统计接口输出 `window_title`、`exe_path` 或完整 URL。
 
 更多说明见 [PRIVACY.md](PRIVACY.md)。
 
